@@ -3,7 +3,12 @@ name: Build Android APK Release
 on:
   push:
     branches: [ "main", "master" ]
+    tags:
+      - "v*"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -20,11 +25,11 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Setup Java JDK
+      - name: Setup Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -35,9 +40,8 @@ jobs:
       - name: Build Next.js Static Export
         run: npm run build
 
-      - name: Add and Sync Capacitor Android
+      - name: Sync Capacitor Android
         run: |
-          npx cap add android || true
           npx cap sync android
 
       - name: Build Android APK (Debug / Test)
@@ -46,34 +50,40 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
+      - name: Copy and Rename APK for Release
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./LesoUchet-v1.0.0.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: LesoUchet-Android-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: ./LesoUchet-v1.0.0.apk
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.0.0
-          name: ЛесоУчёт v1.0.0 (Готовый APK)
+          name: "ЛесоУчёт v1.0.0 (Готовый APK на телефон)"
           body: |
             ### 📱 Готовое Android-приложение «ЛесоУчёт» (APK)
             
-            **Что умеет:**
-            * 📸 Распознавание бланков учёта распиловки древесины (без токенов).
-            * 🌲 Автоматический расчёт кубатуры круглого леса (ГОСТ 2708-75, 6м).
-            * 📦 Расчёт кубатуры готовой продукции (1 сорт + 2 сорт + брус).
+            **Скачайте прикрепленный файл `LesoUchet-v1.0.0.apk` или `app-debug.apk` на смартфон и установите.**
+            
+            ---
+            
+            ### 🌲 Возможности приложения:
+            * 📸 **Распознавание бланков учёта распиловки древесины** (автономно / без токенов).
+            * 🌲 **Автоматический расчёт кубатуры круглого леса** по официальной таблице **ГОСТ 2708-75 (6.0 м)**.
+            * 📦 **Кубатура готовой продукции** (1 сорт + 2 сорт + брус).
             * 💰 **Расчёт зарплаты бригады:**
               * Готовая продукция: `кубатура × 1600 руб/м³`
-              * Горбыль деловой 2м: `штуки × 25 руб/шт`
-              * Процент выхода леса (округление всегда в меньшую сторону).
-            * 📊 Экспорт в Excel (.xlsx) и CSV (1С).
-            
-            **Установка:**
-            Скачайте прикрепленный файл `app-debug.apk` на смартфон и нажмите установить.
+              * Горбыль 2м (штакет/доска необрезная): `штуки × 25 руб/шт`
+              * Процент выхода леса (округление **всегда в меньшую сторону**).
+            * 📊 **Экспорт в Excel (.xlsx)** и **CSV (1С)**.
           files: |
-            android/app/build/outputs/apk/debug/app-debug.apk
+            ./LesoUchet-v1.0.0.apk
+            ./app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
