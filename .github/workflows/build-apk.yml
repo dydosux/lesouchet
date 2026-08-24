@@ -52,38 +52,40 @@ jobs:
 
       - name: Copy and Rename APK for Release
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk ./LesoUchet-v1.0.0.apk
+          VERSION="${GITHUB_REF_NAME}"
+          if [[ "$VERSION" != v* ]]; then VERSION="v1.1.0"; fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk "./LesoUchet-${VERSION}.apk"
           cp android/app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: LesoUchet-Android-APK
-          path: ./LesoUchet-v1.0.0.apk
+          path: ./LesoUchet-*.apk
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "ЛесоУчёт v1.0.0 (Готовый APK на телефон)"
+          tag_name: ${{ env.VERSION || 'v1.1.0' }}
+          name: "ЛесоУчёт ${{ env.VERSION || 'v1.1.0' }} — реальное OCR"
           body: |
-            ### 📱 Готовое Android-приложение «ЛесоУчёт» (APK)
+            ### 📱 ЛесоУчёт — полностью рабочее OCR-приложение
             
-            **Скачайте прикрепленный файл `LesoUchet-v1.0.0.apk` или `app-debug.apk` на смартфон и установите.**
+            **Скачайте `LesoUchet-v1.1.0.apk` или `app-debug.apk` и установите на телефон.**
             
-            ---
+            ### Что реально работает в этой версии:
+            * 📸 **Настоящее OCR** через Tesseract.js (рус + eng) прямо на телефоне
+            * 📊 Разбор таблицы размеров, 1/2 сорта, бруса и горбыля
+            * 🌲 Кубатура кругляка по **ГОСТ 2708-75**
+            * 💰 Зарплата: `куб × 1600` + `горбыль × 25`
+            * 📉 Выход леса с округлением **вниз**
+            * ✏️ Ручная правка любой ячейки после распознавания
+            * 📁 Экспорт Excel / CSV
             
-            ### 🌲 Возможности приложения:
-            * 📸 **Распознавание бланков учёта распиловки древесины** (автономно / без токенов).
-            * 🌲 **Автоматический расчёт кубатуры круглого леса** по официальной таблице **ГОСТ 2708-75 (6.0 м)**.
-            * 📦 **Кубатура готовой продукции** (1 сорт + 2 сорт + брус).
-            * 💰 **Расчёт зарплаты бригады:**
-              * Готовая продукция: `кубатура × 1600 руб/м³`
-              * Горбыль 2м (штакет/доска необрезная): `штуки × 25 руб/шт`
-              * Процент выхода леса (округление **всегда в меньшую сторону**).
-            * 📊 **Экспорт в Excel (.xlsx)** и **CSV (1С)**.
+            > Первый запуск OCR требует интернет (скачиваются языковые модели ~15 МБ). Дальше работает офлайн.
           files: |
-            ./LesoUchet-v1.0.0.apk
+            ./LesoUchet-*.apk
             ./app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

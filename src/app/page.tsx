@@ -23,13 +23,14 @@ import {
   Share2,
   Check
 } from 'lucide-react';
-import { RecognitionResult, TableRow, ExtraItem, recalculateLocal } from '@/lib/types';
-import { DEMO_PRESET_DATA } from '@/lib/demoData';
+import { RecognitionResult, ExtraItem, recalculateLocal } from '@/lib/types';
+import { createEmptySheet } from '@/lib/sheetTemplate';
+import { recognizeTimberSheet } from '@/lib/ocrEngine';
 import { exportToExcel, exportToCSV } from '@/lib/exportUtils';
 import confetti from 'canvas-confetti';
 
 export default function TimberOcrMobileApp() {
-  const [data, setData] = useState<RecognitionResult>(DEMO_PRESET_DATA);
+  const [data, setData] = useState<RecognitionResult>(() => createEmptySheet(1600, 25));
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'salary' | 'sawn' | 'roundwood' | 'cubature' | 'mobile_apk'>('salary');
@@ -38,7 +39,8 @@ export default function TimberOcrMobileApp() {
   const [slabRate, setSlabRate] = useState<number>(25);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [ocrLog, setOcrLog] = useState<string[]>([]);
-  const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -55,47 +57,43 @@ export default function TimberOcrMobileApp() {
     }
   };
 
-  const notifyCopied = (msg: string) => {
-    setCopiedNotification(msg);
-    setTimeout(() => setCopiedNotification(null), 2500);
-  };
-
   const handleFileUpload = async (file: File) => {
     if (!file) return;
 
     const imageUrl = URL.createObjectURL(file);
     setSelectedImage(imageUrl);
     setIsProcessing(true);
-    setOcrLog([
-      `[0.00s] Загрузка снимка "${file.name}"...`,
-      `[0.20s] Предобработка: фильтрация шума, выравнивание наклона (Deskew)...`,
-      `[0.55s] Детекция табличной сетки и ячеек 1-го и 2-го сорта...`,
-      `[0.95s] Локальное распознавание OCR (Tesseract / OpenCV)...`,
-      `[1.30s] Распознаны диаметры кругляка и доп. позиции (горбыль/брус)...`,
-      `[1.45s] Автоматический расчёт кубатуры ГОСТ 2708-75 и зарплаты (1600 руб/м³ + 25 руб/шт)...`
-    ]);
+    setOcrError(null);
+    setShowRawOcr(false);
+    setOcrLog([`Загрузка файла «${file.name}» (${Math.round(file.size / 1024)} КБ)...`]);
+    setActiveTab('salary');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`http://127.0.0.1:8000/api/recognize?sawn_rate=${sawnRate}&slab_rate=${slabRate}`, {
-        method: 'POST',
-        body: formData
+      const result = await recognizeTimberSheet(file, {
+        sawnRate,
+        slabRate,
+        onProgress: (msg) => {
+          setOcrLog((prev) => {
+            const next = [...prev, msg];
+            return next.slice(-12);
+          });
+        }
       });
 
-      if (res.ok) {
-        const result = await res.json();
-        setData(result);
-        triggerConfetti();
+      setData(result);
+      const filled = result.standard_table.filter((r) => r.is_filled).length;
+      if (filled === 0 && result.extra_items.length === 0 && result.roundwood_logs.count === 0) {
+        setOcrError(
+          'OCR не нашёл заполненных ячеек. Сделайте фото ровнее/ближе или введите цифры вручную в вкладке «Пиломатериал».'
+        );
       } else {
-        // Fallback to local calculation engine
-        setData(DEMO_PRESET_DATA);
         triggerConfetti();
       }
     } catch (err) {
-      console.warn("Using local calculation fallback:", err);
-      setData(DEMO_PRESET_DATA);
-      triggerConfetti();
+      console.error('OCR failed:', err);
+      setOcrError(
+        `Ошибка OCR: ${err instanceof Error ? err.message : String(err)}. Проверьте интернет при первом запуске (скачиваются языковые модели) и попробуйте ещё раз.`
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -428,13 +426,51 @@ export default function TimberOcrMobileApp() {
           </button>
         </div>
 
-        {/* OCR Progress banner */}
-        {isProcessing && (
-          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl p-4 flex items-center gap-3 animate-pulse">
-            <RefreshCw className="h-6 w-6 text-amber-400 animate-spin shrink-0" />
-            <div>
-              <p className="text-sm font-bold text-white">Автономное распознавание бланка...</p>
-              <p className="text-xs text-slate-400">OpenCV поиск табличной сетки + Tesseract OCR (0 токенов)</p>
+        {/* OCR Progress / status */}
+        {(isProcessing || ocrLog.length > 0 || ocrError) && (
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-4 space-y-2">
+            <div className="flex items-start gap-3">
+              {isProcessing ? (
+                <RefreshCw className="h-6 w-6 text-amber-400 animate-spin shrink-0 mt-0.5" />
+              ) : (
+                <Cpu className="h-6 w-6 text-emerald-400 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">
+                  {isProcessing
+                    ? 'Реальное OCR-распознавание бланка...'
+                    : 'OCR завершён (Tesseract.js rus+eng, локально)'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Предобработка фото → чтение таблицы → кубатура ГОСТ 2708-75 → зарплата. Без токенов и без сервера.
+                </p>
+                {ocrLog.length > 0 && (
+                  <div className="mt-2 font-mono text-[11px] text-slate-300 space-y-0.5 max-h-28 overflow-y-auto">
+                    {ocrLog.map((line, i) => (
+                      <div key={i}>• {line}</div>
+                    ))}
+                  </div>
+                )}
+                {ocrError && (
+                  <p className="mt-2 text-xs text-rose-300 border border-rose-500/30 bg-rose-950/40 rounded-lg px-2 py-1.5">
+                    {ocrError}
+                  </p>
+                )}
+                {data.raw_ocr_sample && !isProcessing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRawOcr((v) => !v)}
+                    className="mt-2 text-[11px] text-amber-300 underline cursor-pointer"
+                  >
+                    {showRawOcr ? 'Скрыть сырой текст OCR' : 'Показать сырой текст OCR (для проверки)'}
+                  </button>
+                )}
+                {showRawOcr && data.raw_ocr_sample && (
+                  <pre className="mt-2 text-[10px] text-slate-400 whitespace-pre-wrap max-h-40 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-2">
+                    {data.raw_ocr_sample}
+                  </pre>
+                )}
+              </div>
             </div>
           </div>
         )}
