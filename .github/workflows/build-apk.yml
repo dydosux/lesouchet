@@ -53,7 +53,7 @@ jobs:
       - name: Copy and Rename APK for Release
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          if [[ "$VERSION" != v* ]]; then VERSION="v1.1.0"; fi
+          if [[ "$VERSION" != v* ]]; then VERSION="v1.2.0"; fi
           cp android/app/build/outputs/apk/debug/app-debug.apk "./LesoUchet-${VERSION}.apk"
           cp android/app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -67,23 +67,20 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION || 'v1.1.0' }}
-          name: "ЛесоУчёт ${{ env.VERSION || 'v1.1.0' }} — реальное OCR"
+          tag_name: ${{ env.VERSION || 'v1.2.0' }}
+          name: "ЛесоУчёт ${{ env.VERSION || 'v1.2.0' }} — Gemini Vision OCR"
           body: |
-            ### 📱 ЛесоУчёт — полностью рабочее OCR-приложение
+            ### ЛесоУчёт — точное чтение бланков через Gemini Vision
             
-            **Скачайте `LesoUchet-v1.1.0.apk` или `app-debug.apk` и установите на телефон.**
+            Скачайте `LesoUchet-v1.2.0.apk` и установите.
             
-            ### Что реально работает в этой версии:
-            * 📸 **Настоящее OCR** через Tesseract.js (рус + eng) прямо на телефоне
-            * 📊 Разбор таблицы размеров, 1/2 сорта, бруса и горбыля
-            * 🌲 Кубатура кругляка по **ГОСТ 2708-75**
-            * 💰 Зарплата: `куб × 1600` + `горбыль × 25`
-            * 📉 Выход леса с округлением **вниз**
-            * ✏️ Ручная правка любой ячейки после распознавания
-            * 📁 Экспорт Excel / CSV
+            ### Важно для точности
+            1. Откройте приложение → ⚙ Настройки
+            2. Создайте бесплатный ключ: https://aistudio.google.com/apikey
+            3. Вставьте API key и выберите **Gemini Vision**
+            4. Снимите бланк → модель читает рукопись и считает кубатуру/зарплату
             
-            > Первый запуск OCR требует интернет (скачиваются языковые модели ~15 МБ). Дальше работает офлайн.
+            Tesseract оставлен только как слабый офлайн-запасной вариант.
           files: |
             ./LesoUchet-*.apk
             ./app-debug.apk

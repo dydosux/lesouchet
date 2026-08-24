@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Upload,
@@ -25,7 +25,14 @@ import {
 } from 'lucide-react';
 import { RecognitionResult, ExtraItem, recalculateLocal } from '@/lib/types';
 import { createEmptySheet } from '@/lib/sheetTemplate';
-import { recognizeTimberSheet } from '@/lib/ocrEngine';
+import { recognizeSheetSmart } from '@/lib/recognize';
+import {
+  getPreferredEngine,
+  getStoredApiKey,
+  setPreferredEngine,
+  setStoredApiKey,
+  type OcrEngineId
+} from '@/lib/visionOcr';
 import { exportToExcel, exportToCSV } from '@/lib/exportUtils';
 import confetti from 'canvas-confetti';
 
@@ -41,9 +48,16 @@ export default function TimberOcrMobileApp() {
   const [ocrLog, setOcrLog] = useState<string[]>([]);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [showRawOcr, setShowRawOcr] = useState<boolean>(false);
+  const [ocrEngine, setOcrEngine] = useState<OcrEngineId>('gemini');
+  const [geminiKey, setGeminiKey] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setOcrEngine(getPreferredEngine());
+    setGeminiKey(getStoredApiKey());
+  }, []);
 
   const triggerConfetti = () => {
     try {
@@ -69,9 +83,11 @@ export default function TimberOcrMobileApp() {
     setActiveTab('salary');
 
     try {
-      const result = await recognizeTimberSheet(file, {
+      const result = await recognizeSheetSmart(file, {
         sawnRate,
         slabRate,
+        engine: ocrEngine,
+        apiKey: geminiKey,
         onProgress: (msg) => {
           setOcrLog((prev) => {
             const next = [...prev, msg];
@@ -84,16 +100,15 @@ export default function TimberOcrMobileApp() {
       const filled = result.standard_table.filter((r) => r.is_filled).length;
       if (filled === 0 && result.extra_items.length === 0 && result.roundwood_logs.count === 0) {
         setOcrError(
-          'OCR не нашёл заполненных ячеек. Сделайте фото ровнее/ближе или введите цифры вручную в вкладке «Пиломатериал».'
+          'Модель не нашла заполненных ячеек. Сделайте фото ровнее и ближе, проверьте ключ Gemini в настройках или введите цифры вручную.'
         );
       } else {
         triggerConfetti();
       }
     } catch (err) {
       console.error('OCR failed:', err);
-      setOcrError(
-        `Ошибка OCR: ${err instanceof Error ? err.message : String(err)}. Проверьте интернет при первом запуске (скачиваются языковые модели) и попробуйте ещё раз.`
-      );
+      setOcrError(err instanceof Error ? err.message : String(err));
+      setShowSettings(true);
     } finally {
       setIsProcessing(false);
     }
@@ -294,9 +309,9 @@ export default function TimberOcrMobileApp() {
       {/* Settings Modal Dropdown */}
       {showSettings && (
         <div className="bg-slate-900 border-b border-slate-800 p-4 animate-in slide-in-from-top duration-200">
-          <div className="max-w-md mx-auto space-y-3">
+          <div className="max-w-lg mx-auto space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Настройки ставок зарплаты</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Настройки OCR и зарплаты</span>
               <button
                 onClick={() => setShowSettings(false)}
                 className="text-xs text-slate-400 hover:text-white cursor-pointer"
@@ -304,6 +319,67 @@ export default function TimberOcrMobileApp() {
                 ✕ Закрыть
               </button>
             </div>
+
+            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-bold text-emerald-300">Лучшая модель чтения: Google Gemini Vision</p>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Tesseract плохо читает рукопись. Gemini Flash — лучший бесплатный вариант для бланков.
+                Ключ бесплатный: откройте{' '}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-300 underline"
+                >
+                  aistudio.google.com/apikey
+                </a>
+                , создайте API key и вставьте ниже.
+              </p>
+              <label className="block text-[11px] text-slate-400 mb-1">Движок распознавания:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOcrEngine('gemini');
+                    setPreferredEngine('gemini');
+                  }}
+                  className={`text-xs font-bold py-2 rounded-lg border cursor-pointer ${
+                    ocrEngine === 'gemini'
+                      ? 'bg-amber-500 text-slate-950 border-amber-400'
+                      : 'bg-slate-950 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  Gemini Vision ★
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOcrEngine('tesseract');
+                    setPreferredEngine('tesseract');
+                  }}
+                  className={`text-xs font-bold py-2 rounded-lg border cursor-pointer ${
+                    ocrEngine === 'tesseract'
+                      ? 'bg-amber-500 text-slate-950 border-amber-400'
+                      : 'bg-slate-950 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  Tesseract (офлайн)
+                </button>
+              </div>
+              <label className="block text-[11px] text-slate-400 mt-2 mb-1">Gemini API Key:</label>
+              <input
+                type="password"
+                value={geminiKey}
+                placeholder="AIza..."
+                onChange={(e) => {
+                  setGeminiKey(e.target.value);
+                  setStoredApiKey(e.target.value);
+                }}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-mono text-emerald-300"
+              />
+              <p className="text-[10px] text-slate-500">Ключ хранится только на этом телефоне (localStorage).</p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] text-slate-400 mb-1">Ставка за м³ продукции (руб):</label>
@@ -392,6 +468,21 @@ export default function TimberOcrMobileApp() {
         </div>
 
         {/* Quick Camera Capture and Upload bar */}
+        {ocrEngine === 'gemini' && !geminiKey.trim() && (
+          <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-3 text-xs text-rose-100 flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Для точного чтения рукописи вставьте бесплатный Gemini API key в настройках (⚙).
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="bg-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+            >
+              Открыть настройки
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <input
             type="file"
@@ -438,11 +529,13 @@ export default function TimberOcrMobileApp() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white">
                   {isProcessing
-                    ? 'Реальное OCR-распознавание бланка...'
-                    : 'OCR завершён (Tesseract.js rus+eng, локально)'}
+                    ? ocrEngine === 'gemini'
+                      ? 'Gemini Vision читает бланк...'
+                      : 'Tesseract OCR распознаёт бланк...'
+                    : `Готово: ${data.metadata.model_engine}`}
                 </p>
                 <p className="text-xs text-slate-400">
-                  Предобработка фото → чтение таблицы → кубатура ГОСТ 2708-75 → зарплата. Без токенов и без сервера.
+                  Лучшая точность — Gemini Vision. После OCR можно править любую цифру вручную.
                 </p>
                 {ocrLog.length > 0 && (
                   <div className="mt-2 font-mono text-[11px] text-slate-300 space-y-0.5 max-h-28 overflow-y-auto">
