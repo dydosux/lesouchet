@@ -1,0 +1,79 @@
+name: Build Android APK Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build Next.js Static Export
+        run: npm run build
+
+      - name: Add and Sync Capacitor Android
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Build Android APK (Debug / Test)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LesoUchet-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: v1.0.0
+          name: ЛесоУчёт v1.0.0 (Готовый APK)
+          body: |
+            ### 📱 Готовое Android-приложение «ЛесоУчёт» (APK)
+            
+            **Что умеет:**
+            * 📸 Распознавание бланков учёта распиловки древесины (без токенов).
+            * 🌲 Автоматический расчёт кубатуры круглого леса (ГОСТ 2708-75, 6м).
+            * 📦 Расчёт кубатуры готовой продукции (1 сорт + 2 сорт + брус).
+            * 💰 **Расчёт зарплаты бригады:**
+              * Готовая продукция: `кубатура × 1600 руб/м³`
+              * Горбыль деловой 2м: `штуки × 25 руб/шт`
+              * Процент выхода леса (округление всегда в меньшую сторону).
+            * 📊 Экспорт в Excel (.xlsx) и CSV (1С).
+            
+            **Установка:**
+            Скачайте прикрепленный файл `app-debug.apk` на смартфон и нажмите установить.
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

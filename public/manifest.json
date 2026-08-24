@@ -1,0 +1,18 @@
+{
+  "name": "ЛесоУчёт OCR",
+  "short_name": "ЛесоУчёт",
+  "description": "Мобильный учёт распиловки древесины, кубатурник ГОСТ 2708-75 и расчёт зарплаты бригады",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
